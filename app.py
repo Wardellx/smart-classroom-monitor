@@ -11,7 +11,7 @@ st.set_page_config(page_title="Smart Classroom Monitor", layout="wide")
 
 st.markdown("""
 <h1 style='text-align:center; color:#4CAF50;'>🎓 Smart Classroom Monitoring System</h1>
-<p style='text-align:center; color:gray;'>AI-powered cleanliness, behavior & classroom analytics</p>
+<p style='text-align:center; color:gray;'>AI-powered classroom analytics</p>
 <hr>
 """, unsafe_allow_html=True)
 
@@ -20,13 +20,11 @@ st.markdown("""
 def load_models():
     model_main = YOLO("yolov8m.pt")
 
-    # ✅ Download best.pt from Google Drive if not present
     if not os.path.exists("best.pt"):
         url = "https://drive.google.com/uc?id=1nPBbqYVZiI-VTM14ejHMiz-7qJlsSeit"
         gdown.download(url, "best.pt", quiet=False)
 
     model_trash = YOLO("best.pt")
-
     return model_main, model_trash
 
 model_main, model_trash = load_models()
@@ -185,7 +183,8 @@ def process_frame(image, conf_main, conf_trash):
 # SIDEBAR
 st.sidebar.header("⚙️ Controls")
 
-mode = st.sidebar.selectbox("Mode", ["Image Upload", "Live Webcam"])
+mode = st.sidebar.selectbox("Mode", ["Image Upload", "Camera (Phone)", "Live Webcam"])
+
 conf_main = st.sidebar.slider("Main Confidence", 0.1, 1.0, 0.25)
 conf_trash = st.sidebar.slider("Trash Confidence", 0.1, 1.0, 0.3)
 
@@ -193,17 +192,17 @@ if "data" not in st.session_state:
     st.session_state.data = []
 
 # ---------------------------
-# IMAGE MODE
+# 📷 IMAGE UPLOAD
 if mode == "Image Upload":
 
-    classroom = st.selectbox("🏫 Select Classroom", ["A","B","C","D","E"])
+    classroom = st.selectbox("🏫 Classroom", ["A","B","C","D","E"])
     uploaded_file = st.file_uploader("Upload Image", type=["jpg","png"])
 
     if uploaded_file:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         image = cv2.imdecode(file_bytes, 1)
 
-        if st.button("🚀 Analyze Classroom"):
+        if st.button("Analyze"):
             annotated, *metrics = process_frame(image, conf_main, conf_trash)
 
             (count_person,count_chair,count_bottle,
@@ -225,18 +224,43 @@ if mode == "Image Upload":
 
             st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
 
-            cols = st.columns(7)
-            cols[0].metric("Students", count_person)
-            cols[1].metric("Chairs", count_chair)
-            cols[2].metric("Bottles", count_bottle)
-            cols[3].metric("Phones", count_phone)
-            cols[4].metric("Books", count_book)
-            cols[5].metric("Trash", trash_count)
-            cols[6].metric("Score", score)
+# ---------------------------
+# 📱 PHONE CAMERA
+if mode == "Camera (Phone)":
+
+    classroom = st.selectbox("🏫 Classroom", ["A","B","C","D","E"])
+    image = st.camera_input("Take a picture")
+
+    if image is not None:
+        file_bytes = np.asarray(bytearray(image.read()), dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, 1)
+
+        annotated, *metrics = process_frame(frame, conf_main, conf_trash)
+
+        (count_person,count_chair,count_bottle,
+         count_phone,count_book,trash_count,
+         score,cleanliness,alignment) = metrics
+
+        st.session_state.data.append({
+            "Classroom": classroom,
+            "Students": count_person,
+            "Chairs": count_chair,
+            "Phones": count_phone,
+            "Bottles": count_bottle,
+            "Books": count_book,
+            "AI Trash": trash_count,
+            "Cleanliness": cleanliness,
+            "Alignment": alignment,
+            "Score": score
+        })
+
+        st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
 
 # ---------------------------
-# WEBCAM MODE
+# 💻 WEBCAM (LOCAL ONLY)
 if mode == "Live Webcam":
+
+    st.warning("⚠️ Works only on local machine, not on deployed app")
 
     run = st.checkbox("Start Webcam")
     FRAME_WINDOW = st.image([])
